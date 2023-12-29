@@ -1,9 +1,13 @@
 version: '3'
 
 volumes:
+  libman-proxy:
+    driver: local
   libman-pgsql:
     driver: local
   libman-app:
+    driver: local
+  libman-oauth:
     driver: local
 
 networks:
@@ -11,18 +15,33 @@ networks:
     driver: bridge
 
 services:
+  traefik:
+    image: traefik:v2.10
+    container_name: proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - lib-man
+    volumes:
+      - ./data/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./data/traefik/traefik.yml:/etc/traefik/config.yml:ro
+      - ./data/traefik/acme.json:/etc/traefik/acme.json
+      - libman-proxy:/data
+
   pgsql:
     image: postgres:15-alpine
     container_name: pgsql
+    restart: unless-stopped
     networks:
       - lib-man
     ports:
       - '${FORWARD_DB_PORT:-5432}:5432'
     environment:
-      PGPASSWORD: '${DB_PASSWORD:-secret}'
+      PGPASSWORD: '${DB_PASSWORD:-password!}'
       POSTGRES_DB: '${DB_DATABASE}'
       POSTGRES_USER: '${DB_USERNAME}'
-      POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD:-password!}'
     volumes:
       - libman-pgsql:/var/lib/postgresql/data'
     healthcheck:
@@ -30,12 +49,38 @@ services:
       retries: 3
       timeout: 5s
 
-  app:
-    image: denisakp/lib-man:latest
-    container_name: app
+  keyclaock:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: oauth2
+    restart: unless-stopped
+    networks:
+      - lib-man
+    volumes:
+      - libman-oauth:/data
+    command: start
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: 'jdbc:postgresql://pgsql/oauth2'
+      KC_DB_USERNAME: '${DB_USERNAME}'
+      KC_DB_PASSWORD: '${DB_PASSWORD:-password!}'
+      KC_HOSTNAME: '${KC_HOSTNAME:-library-manager.test}'
+      KEYCLOAK_ADMIN:  '${KC_ADMIN_USER:-libman}'
+      KEYCLOAK_ADMIN_PASSWORD: '${KC_ADMIN_PASSWORD:-password!}'
+      KC_PROXY: edge
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+
+  server:
+    image: denisakp/library-manager:latest
+    container_name: server
+    restart: unless-stopped
+    depends_on:
+      - pgsql
+      - keyclaock
+      - traefik
     networks:
       - lib-man
     ports:
-      - '${FORWARD_APP_PORT:-8080}:8080'
+      - '${FORWARD_APP_PORT:-4000}:80'
     volumes:
       - libman-app:/data

@@ -1,0 +1,33 @@
+http:
+  routers:
+    dashboard:
+      rule: Host(`traefik.libman.test`)
+      service: api@internal
+    oauth2:
+      rule: Host(`oauth2.libman.test`)
+      service: oauth2-backend
+    libman:
+      rule: Host(`api.libman.test`)
+      service: libman-backend
+
+  services:
+    oauth2-backend:
+      loadBalancer:
+        servers:
+          - url: http://keyclaock
+    libman-backend:
+      loadBalancer:
+        servers:
+          - url: http://server
+
+  middlewares:
+    gzip:
+      compress: {}
+    traefik-auth:
+      basicAuth:
+        users:
+          - "admin:$2y$05$I7c25ZS7WxSoa/xQo7kvJucumNZC3X3LQIQGHqt6w3dmYPLJ/cwie" #admin:admin
+    default:
+      chain:
+        middlewares:
+          - gzip
