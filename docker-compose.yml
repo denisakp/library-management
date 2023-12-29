@@ -1,0 +1,41 @@
+version: '3'
+
+volumes:
+  libman-pgsql:
+    driver: local
+  libman-app:
+    driver: local
+
+networks:
+  lib-man:
+    driver: bridge
+
+services:
+  pgsql:
+    image: postgres:15-alpine
+    container_name: pgsql
+    networks:
+      - lib-man
+    ports:
+      - '${FORWARD_DB_PORT:-5432}:5432'
+    environment:
+      PGPASSWORD: '${DB_PASSWORD:-secret}'
+      POSTGRES_DB: '${DB_DATABASE}'
+      POSTGRES_USER: '${DB_USERNAME}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
+    volumes:
+      - libman-pgsql:/var/lib/postgresql/data'
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${DB_DATABASE}", "-U", "${DB_USERNAME}"]
+      retries: 3
+      timeout: 5s
+
+  app:
+    image: denisakp/lib-man:latest
+    container_name: app
+    networks:
+      - lib-man
+    ports:
+      - '${FORWARD_APP_PORT:-8080}:8080'
+    volumes:
+      - libman-app:/data
